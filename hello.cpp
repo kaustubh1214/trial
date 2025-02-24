@@ -1,7 +1,12 @@
 #include <iostream>
 using namespace std;
 
-int main() {
+void greet() {
     cout << "Hello, World!" << endl;
+}
+
+int main() {
+    greet();
     return 0;
 }
+
