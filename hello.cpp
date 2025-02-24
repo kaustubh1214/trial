@@ -1,7 +1,6 @@
 #include <iostream>
 using namespace std;
 
-int main() {
-    cout << "Hello, World!" << endl;
-    return 0;
+void greet() {
+    cout << "Hello from branch2!" << endl;
 }
