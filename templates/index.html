@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Query - IT Act, 2000</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --background: #f8f9fa;
+            --text-color: #2c3e50;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background);
+            color: var(--text-color);
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            padding: 2rem 0;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border-radius: 0 0 20px 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .query-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            margin-top: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .input-group {
+            position: relative;
+            margin: 1.5rem 0;
+        }
+
+        input {
+            width: 100%;
+            padding: 1rem 1.5rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 30px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 10px rgba(52, 152, 219, 0.2);
+        }
+
+        button {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 25px;
+            background: var(--secondary-color);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        button:hover {
+            background: #2980b9;
+            transform: translateY(-50%) scale(1.05);
+        }
+
+        .response-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            margin-top: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            animation: fadeIn 0.5s ease;
+            text-align: left;
+            line-height: 1.6;
+        }
+
+        .response-card p {
+            margin: 0 0 1rem 0;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 1rem;
+            color: var(--secondary-color);
+        }
+
+        .loading i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 1.8rem;
+            }
+            
+            input {
+                padding: 0.8rem 1rem;
+            }
+            
+            button {
+                padding: 0.6rem 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>
+                <i class="fas fa-balance-scale"></i>
+                IT Act, 2000 Legal Assistant
+            </h1>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="query-section">
+            <div class="input-group">
+                <input type="text" id="query" placeholder="Ask your legal question about the IT Act, 2000...">
+                <button onclick="askQuestion()">
+                    <i class="fas fa-search"></i>
+                    Search
+                </button>
+            </div>
+            <div class="loading" id="loading">
+                <i class="fas fa-spinner"></i> Analyzing your query...
+            </div>
+            <div class="response-card" id="response"></div>
+        </div>
+    </div>
+
+    <script>
+        async function askQuestion() {
+            const query = document.getElementById("query").value;
+            const responseDiv = document.getElementById("response");
+            const loading = document.getElementById("loading");
+
+            if (!query) {
+                responseDiv.innerHTML = "<p style='color: #e74c3c'>Please enter a legal question to proceed.</p>";
+                return;
+            }
+
+            try {
+                loading.style.display = 'block';
+                responseDiv.innerHTML = '';
+
+                const response = await fetch(`/ask?query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                
+                loading.style.display = 'none';
+                responseDiv.innerHTML = `<p>${data.answer.replace(/\n/g, '</p><p>')}</p>`;
+            } catch (error) {
+                loading.style.display = 'none';
+                responseDiv.innerHTML = `<p style='color: #e74c3c'>Error retrieving response. Please try again later.</p>`;
+            }
+        }
+    </script>
+</body>
+</html>
