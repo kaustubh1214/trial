@@ -10,6 +10,7 @@ from gensim.models import KeyedVectors
 import os
 from pathlib import Path
 from fastapi import Request
+import re  # Added for regex support
 
 # Ensure NLTK resources are available
 nltk.download('punkt')
@@ -57,36 +58,8 @@ section_explanations = {
 }
 
 # Tokenize the legal sections for BM25 search
-try:
-    tokenized_rules = [word_tokenize(rule.lower()) for rule in it_act_rules]
-except Exception as e:
-    print(f"Error in tokenization: {e}")
-    tokenized_rules = [rule.lower().split() for rule in it_act_rules]
-
+tokenized_rules = [word_tokenize(rule.lower()) for rule in it_act_rules]
 bm25 = BM25Okapi(tokenized_rules)
-
-# Function to compute the average vector for a given text using law2vec
-def get_average_vector(text, model):
-    tokens = word_tokenize(text.lower())
-    valid_tokens = [token for token in tokens if token in model]
-    if not valid_tokens:
-        vector_size = model.vector_size if model else 300
-        return np.zeros(vector_size)
-    return np.mean([model[token] for token in valid_tokens], axis=0)
-
-# Pre-compute law2vec embeddings for each IT Act section if law2vec_model is available
-if law2vec_model:
-    section_embeddings = [get_average_vector(rule, law2vec_model) for rule in it_act_rules]
-else:
-    section_embeddings = None
-
-# Function to compute cosine similarity between two vectors
-def cosine_similarity(vec1, vec2):
-    norm1 = np.linalg.norm(vec1)
-    norm2 = np.linalg.norm(vec2)
-    if norm1 == 0 or norm2 == 0:
-        return 0.0
-    return np.dot(vec1, vec2) / (norm1 * norm2)
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -98,12 +71,23 @@ def ask_question(query: str = Query(..., description="Ask a question about the I
     if not query:
         return {"question": query, "answer": "Please enter a valid legal question."}
     
+    # Check for direct section number requests using regex
+    section_match = re.search(r'section\s+(\d+[A-Z]*)', query, re.IGNORECASE)
+    if section_match:
+        section_num = section_match.group(1).upper()
+        section_code = f"Section {section_num}"
+        if section_code in section_explanations:
+            description = next(rule.split(':', 1)[1].strip() for rule in it_act_rules if rule.startswith(section_code))
+            explanation = section_explanations[section_code]
+            formatted_answer = (
+                f"Under {section_code} of the Information Technology Act, 2000, which deals with {description.lower()}, "
+                f"the legislation provides the following provisions: {explanation} "
+                f"This legal framework ensures appropriate measures and consequences for related cyber offenses."
+            )
+            return {"question": query, "answer": formatted_answer}
+    
     # Tokenize the query for BM25 processing
-    try:
-        query_tokens = word_tokenize(query.lower())
-    except Exception as e:
-        print(f"Error in query tokenization: {e}")
-        query_tokens = query.lower().split()
+    query_tokens = word_tokenize(query.lower())
     
     # BM25 scores for the query against the IT Act sections
     bm25_scores = bm25.get_scores(query_tokens)
