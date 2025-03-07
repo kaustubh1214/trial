@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Legal Query - IT Act, 2000</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="//cdnjs.cloudflare.com/ajax/libs/annyang/2.6.1/annyang.min.js"></script>
     <style>
+        /* Previous CSS remains unchanged */
         :root {
             --primary-color: #2c3e50;
             --secondary-color: #3498db;
@@ -90,9 +92,15 @@
             gap: 0.5rem;
         }
 
-        button:hover {
-            background: #2980b9;
-            transform: translateY(-50%) scale(1.05);
+        /* New mic button style */
+        #micButton {
+            right: 120px;
+            background: #27ae60;
+            padding: 0.8rem;
+        }
+
+        #micButton:hover {
+            background: #219a52;
         }
 
         .response-card {
@@ -146,6 +154,10 @@
             button {
                 padding: 0.6rem 1rem;
             }
+
+            #micButton {
+                right: 100px;
+            }
         }
     </style>
 </head>
@@ -163,6 +175,9 @@
         <div class="query-section">
             <div class="input-group">
                 <input type="text" id="query" placeholder="Ask your legal question about the IT Act, 2000...">
+                <button id="micButton" type="button">
+                    <i class="fas fa-microphone"></i>
+                </button>
                 <button onclick="askQuestion()">
                     <i class="fas fa-search"></i>
                     Search
@@ -176,6 +191,45 @@
     </div>
 
     <script>
+        // Initialize speech recognition
+        if (annyang) {
+            annyang.setLanguage('en-IN');
+            
+            const startListening = () => {
+                annyang.start({ autoRestart: false });
+                document.getElementById('micButton').innerHTML = '<i class="fas fa-microphone-slash"></i>';
+            }
+
+            const stopListening = () => {
+                annyang.abort();
+                document.getElementById('micButton').innerHTML = '<i class="fas fa-microphone"></i>';
+            }
+
+            annyang.addCallback('result', (userSaid) => {
+                document.getElementById('query').value = userSaid[0];
+                stopListening();
+                askQuestion();
+            });
+
+            document.getElementById('micButton').addEventListener('click', () => {
+                if (annyang.isListening()) {
+                    stopListening();
+                } else {
+                    startListening();
+                }
+            });
+        }
+
+        // Initialize text-to-speech
+        const speak = (text) => {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-IN';
+                utterance.rate = 1;
+                speechSynthesis.speak(utterance);
+            }
+        }
+
         async function askQuestion() {
             const query = document.getElementById("query").value;
             const responseDiv = document.getElementById("response");
@@ -195,6 +249,9 @@
                 
                 loading.style.display = 'none';
                 responseDiv.innerHTML = `<p>${data.answer.replace(/\n/g, '</p><p>')}</p>`;
+                
+                // Speak the response
+                speak(data.answer);
             } catch (error) {
                 loading.style.display = 'none';
                 responseDiv.innerHTML = `<p style='color: #e74c3c'>Error retrieving response. Please try again later.</p>`;
