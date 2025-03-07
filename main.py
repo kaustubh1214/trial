@@ -119,8 +119,18 @@ def ask_question(query: str = Query(..., description="Ask a question about the I
     # Retrieve top match
     top_index = np.argmax(bm25_norm)
     best_match = it_act_rules[top_index]
-    section_code = best_match.split(":")[0].strip()
+    
+    # Split section details and format response
+    section_code, description = best_match.split(':', 1)
+    section_code = section_code.strip()
+    description = description.strip()
     explanation = section_explanations.get(section_code, "No detailed explanation available.")
     
-    return {"question": query, "answer": f"{best_match}\n- {explanation}"}
-
+    # Create descriptive paragraph response
+    formatted_answer = (
+        f"Under {section_code} of the Information Technology Act, 2000, which deals with {description.lower()}, "
+        f"the legislation provides the following provisions: {explanation} "
+        f"This legal framework ensures appropriate measures and consequences for related cyber offenses."
+    )
+    
+    return {"question": query, "answer": formatted_answer}
