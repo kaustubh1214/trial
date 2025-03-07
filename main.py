@@ -58,7 +58,12 @@ section_explanations = {
 }
 
 # Tokenize the legal sections for BM25 search
-tokenized_rules = [word_tokenize(rule.lower()) for rule in it_act_rules]
+try:
+    tokenized_rules = [word_tokenize(rule.lower()) for rule in it_act_rules]
+except LookupError:
+    nltk.download('punkt')  # Download the necessary tokenizer if not found
+    tokenized_rules = [word_tokenize(rule.lower()) for rule in it_act_rules]
+
 bm25 = BM25Okapi(tokenized_rules)
 
 @app.get("/", response_class=HTMLResponse)
@@ -77,7 +82,7 @@ def ask_question(query: str = Query(..., description="Ask a question about the I
         section_num = section_match.group(1).upper()
         section_code = f"Section {section_num}"
         if section_code in section_explanations:
-            description = next(rule.split(':', 1)[1].strip() for rule in it_act_rules if rule.startswith(section_code))
+            description = next((rule.split(':', 1)[1].strip() for rule in it_act_rules if rule.startswith(section_code)), "Description not available.")
             explanation = section_explanations[section_code]
             formatted_answer = (
                 f"Under {section_code} of the Information Technology Act, 2000, which deals with {description.lower()}, "
@@ -85,6 +90,8 @@ def ask_question(query: str = Query(..., description="Ask a question about the I
                 f"This legal framework ensures appropriate measures and consequences for related cyber offenses."
             )
             return {"question": query, "answer": formatted_answer}
+        else:
+            return {"question": query, "answer": f"No information is available for {section_code} in the IT Act, 2000."}
     
     # Tokenize the query for BM25 processing
     query_tokens = word_tokenize(query.lower())
