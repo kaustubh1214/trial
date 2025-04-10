@@ -1,33 +1,33 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from rank_bm25 import BM25Okapi
 import nltk
 from nltk.tokenize import word_tokenize
 import numpy as np
-from gensim.models import KeyedVectors
-import os
+import json
+import re
 from pathlib import Path
-from fastapi import Request
-import re  # Added for regex support
 
-# Ensure NLTK resources are available
+# Download tokenizer
 nltk.download('punkt')
 
 app = FastAPI()
-
-# Serve templates
 templates = Jinja2Templates(directory="templates")
 
-# Attempt to load the pre-trained law2vec model
-if os.path.exists("law2vec.bin"):
-    law2vec_model = KeyedVectors.load_word2vec_format("law2vec.bin", binary=True)
-else:
-    print("Warning: law2vec.bin not found. Law2Vec semantic scoring will be disabled.")
-    law2vec_model = None
+# Load JSON with absolute path
+BASE_DIR = Path(__file__).resolve().parent
 
-# Define IT Act, 2000 Sections and Subsections as legal references
+def load_json_data(filename):
+    file_path = BASE_DIR / filename
+    with open(file_path, 'r', encoding='utf-8') as file:
+        return json.load(file)
+
+# Load JSON
+ipc_data = load_json_data("ipc.json")
+crpc_data = load_json_data("crpc.json")
+
+# IT Act (static)
 it_act_rules = [
     "Section 43: Penalty for damage to computer, computer system, etc.",
     "Section 66: Hacking with computer system and data theft.",
@@ -42,86 +42,108 @@ it_act_rules = [
     "Section 80: Powers of police officers to enter, search, and arrest without a warrant."
 ]
 
-# Dictionary of custom explanations for each IT Act section
 section_explanations = {
-    "Section 43": "This section imposes penalties for causing damage to computer systems, covering unauthorized access or harm.",
-    "Section 66": "This section addresses hacking and data theft, used when there is unauthorized access to computer systems.",
-    "Section 66C": "This section focuses on identity theft, penalizing misuse of another's identity.",
-    "Section 66D": "This section targets impersonation and cheating using computer resources, ensuring accountability for digital fraud.",
-    "Section 67": "This section deals with the publication or transmission of obscene material electronically.",
-    "Section 69": "This section provides authorities with powers to intercept or monitor digital communications under specific conditions.",
-    "Section 72": "This section covers breach of confidentiality and privacy, protecting sensitive information from unauthorized disclosure.",
-    "Section 73": "This section penalizes the publishing of false digital signatures.",
-    "Section 74": "This section addresses the use of forged electronic signatures.",
-    "Section 77": "This section outlines compensation and penalties for failing to secure sensitive personal data.",
-    "Section 80": "This section empowers police officers to enter, search, and arrest without a warrant under specified circumstances."
+    "Section 43": "This section imposes penalties for causing damage to computer systems.",
+    "Section 66": "This section addresses hacking and data theft.",
+    "Section 66C": "This section focuses on identity theft.",
+    "Section 66D": "This section targets impersonation using computer resources.",
+    "Section 67": "This section deals with obscene electronic material.",
+    "Section 69": "This section allows interception of digital communications under law.",
+    "Section 72": "This section covers breach of confidentiality and privacy.",
+    "Section 73": "This section penalizes false digital signatures.",
+    "Section 74": "This section covers forged electronic signatures.",
+    "Section 77": "This section outlines compensation for personal data protection failures.",
+    "Section 80": "This section empowers police to act without warrant under certain conditions."
 }
 
-# Tokenize the legal sections for BM25 search
-try:
-    tokenized_rules = [word_tokenize(rule.lower()) for rule in it_act_rules]
-except LookupError:
-    nltk.download('punkt')  # Download the necessary tokenizer if not found
-    tokenized_rules = [word_tokenize(rule.lower()) for rule in it_act_rules]
+# Prepare data for BM25
+documents = []
+source_map = []
 
-bm25 = BM25Okapi(tokenized_rules)
+# Add IT Act
+for rule in it_act_rules:
+    documents.append(rule.lower())
+    section = rule.split(":")[0].strip()
+    description = rule.split(":", 1)[1].strip()
+    source_map.append({
+        "source": "IT Act",
+        "section": section,
+        "description": description,
+        "explanation": section_explanations.get(section, "")
+    })
+
+# Add IPC
+for entry in ipc_data:
+    try:
+        section_code = f"Section {entry['Section']}"
+        title = entry.get("section_title", "")
+        desc = entry.get("section_desc", "")
+        content = f"{section_code}: {title}. {desc}"
+        documents.append(content.lower())
+        source_map.append({
+            "source": "IPC",
+            "section": section_code,
+            "description": title,
+            "explanation": desc
+        })
+    except KeyError as e:
+        print("Missing key in IPC entry:", e)
+
+# Add CrPC
+for entry in crpc_data:
+    try:
+        section_code = f"Section {entry['section']}"
+        title = entry.get("section_title", "")
+        desc = entry.get("section_desc", "")
+        content = f"{section_code}: {title}. {desc}"
+        documents.append(content.lower())
+        source_map.append({
+            "source": "CrPC",
+            "section": section_code,
+            "description": title,
+            "explanation": desc
+        })
+    except KeyError as e:
+        print("Missing key in CrPC entry:", e)
+
+# Tokenize and initialize BM25
+tokenized_docs = [word_tokenize(doc) for doc in documents]
+bm25 = BM25Okapi(tokenized_docs)
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/ask")
-def ask_question(query: str = Query(..., description="Ask a question about the IT Act, 2000")):
+def ask_question(query: str = Query(..., description="Ask a legal question")):
     query = query.strip()
     if not query:
         return {"question": query, "answer": "Please enter a valid legal question."}
-    
-    # Check for direct section number requests using regex
-    section_match = re.search(r'section\s+(\d+[A-Z]*)', query, re.IGNORECASE)
-    if section_match:
-        section_num = section_match.group(1).upper()
-        section_code = f"Section {section_num}"
-        if section_code in section_explanations:
-            description = next((rule.split(':', 1)[1].strip() for rule in it_act_rules if rule.startswith(section_code)), "Description not available.")
-            explanation = section_explanations[section_code]
-            formatted_answer = (
-                f"Under {section_code} of the Information Technology Act, 2000, which deals with {description.lower()}, "
-                f"the legislation provides the following provisions: {explanation} "
-                f"This legal framework ensures appropriate measures and consequences for related cyber offenses."
-            )
-            return {"question": query, "answer": formatted_answer}
-        else:
-            return {"question": query, "answer": f"No information is available for {section_code} in the IT Act, 2000."}
-    
-    # Tokenize the query for BM25 processing
-    query_tokens = word_tokenize(query.lower())
-    
-    # BM25 scores for the query against the IT Act sections
-    bm25_scores = bm25.get_scores(query_tokens)
-    
-    # Normalize BM25 scores
-    bm25_min = bm25_scores.min()
-    bm25_max = bm25_scores.max()
-    if bm25_max - bm25_min > 0:
-        bm25_norm = (bm25_scores - bm25_min) / (bm25_max - bm25_min)
-    else:
-        bm25_norm = bm25_scores
 
-    # Retrieve top match
-    top_index = np.argmax(bm25_norm)
-    best_match = it_act_rules[top_index]
-    
-    # Split section details and format response
-    section_code, description = best_match.split(':', 1)
-    section_code = section_code.strip()
-    description = description.strip()
-    explanation = section_explanations.get(section_code, "No detailed explanation available.")
-    
-    # Create descriptive paragraph response
-    formatted_answer = (
-        f"Under {section_code} of the Information Technology Act, 2000, which deals with {description.lower()}, "
-        f"the legislation provides the following provisions: {explanation} "
-        f"This legal framework ensures appropriate measures and consequences for related cyber offenses."
-    )
-    
-    return {"question": query, "answer": formatted_answer}
+    # Direct match for Section
+    match = re.search(r'section\s+(\d+[A-Z]*)', query, re.IGNORECASE)
+    if match:
+        section_code = f"Section {match.group(1).upper()}"
+        for entry in source_map:
+            if entry["section"] == section_code:
+                return {
+                    "question": query,
+                    "answer": (
+                        f"Under {entry['section']} of the {entry['source']}, which deals with {entry['description'].lower()}, "
+                        f"the law provides the following explanation: {entry['explanation']}"
+                    )
+                }
+
+    # BM25 Search
+    tokens = word_tokenize(query.lower())
+    scores = bm25.get_scores(tokens)
+    top_index = np.argmax(scores)
+    top_entry = source_map[top_index]
+
+    return {
+        "question": query,
+        "answer": (
+            f"Under {top_entry['section']} of the {top_entry['source']}, which deals with {top_entry['description'].lower()}, "
+            f"the law provides the following explanation: {top_entry['explanation']}"
+        )
+    }
